@@ -4,37 +4,90 @@
 //
 //  Created by Pramuditha Muhammad Ikhwan on 12/06/25.
 //
-
 import SwiftUI
-import RealityKit
+import ARKit
 
 struct ContentView : View {
-
     var body: some View {
-        RealityView { content in
-
-            // Create a cube model
-            let model = Entity()
-            let mesh = MeshResource.generateBox(size: 0.1, cornerRadius: 0.005)
-            let material = SimpleMaterial(color: .gray, roughness: 0.15, isMetallic: true)
-            model.components.set(ModelComponent(mesh: mesh, materials: [material]))
-            model.position = [0, 0.05, 0]
-
-            // Create horizontal plane anchor for the content
-            let anchor = AnchorEntity(.plane(.horizontal, classification: .any, minimumBounds: SIMD2<Float>(0.2, 0.2)))
-            anchor.addChild(model)
-
-            // Add the horizontal plane anchor to the scene
-            content.add(anchor)
-
-            content.camera = .spatialTracking
-
-        }
-        .edgesIgnoringSafeArea(.all)
+        ARViewContainer().edgesIgnoringSafeArea(.all)
     }
-
 }
 
+struct ARViewContainer: UIViewRepresentable {
+    func makeUIView(context: Context) -> ARSCNView {
+        let sceneView = ARSCNView(frame: .zero)
+        
+        guard ARFaceTrackingConfiguration.isSupported else { fatalError() }
+        sceneView.delegate = context.coordinator
+        
+        let configuration = ARFaceTrackingConfiguration()
+        sceneView.session.run(configuration)
+        
+        return sceneView
+    }
+    
+    func updateUIView(_ uiView: ARSCNView, context: Context) {}
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
+    class Coordinator: NSObject, ARSCNViewDelegate {
+        func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
+            guard let device = renderer.device else {
+                return nil
+            }
+            guard let faceAnchor = anchor as? ARFaceAnchor else {
+                return nil
+            }
+            
+            let faceGeometry = ARSCNFaceGeometry(device: device)
+            let node = SCNNode(geometry: faceGeometry)
+            
+
+            node.geometry?.firstMaterial?.fillMode = .lines
+            
+            for x in 0..<faceAnchor.geometry.vertices.count {
+                if x % 2 == 0 {
+                    let text = SCNText(string: "\(x)", extrusionDepth: 1)
+                    let textNode = SCNNode(geometry: text)
+                    textNode.scale = SCNVector3(x: 0.00025, y: 0.00025, z: 0.00025)
+                    textNode.name = "\(x)"
+                    
+                    // Set the text color to red
+                    textNode.geometry?.firstMaterial?.diffuse.contents = UIColor.red
+                    
+                    // Position the text node at the corresponding vertex
+                    let vertex = SCNVector3(faceAnchor.geometry.vertices[x])
+                    textNode.position = vertex
+                    
+                    node.addChildNode(textNode)
+                }
+            }
+            
+            return node
+        }
+        
+        func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
+            guard let faceAnchor = anchor as? ARFaceAnchor,
+                  let faceGeometry = node.geometry as? ARSCNFaceGeometry
+            else {
+                return
+            }
+            
+            faceGeometry.update(from: faceAnchor.geometry)
+        
+            for x in 0..<faceAnchor.geometry.vertices.count {
+                if x % 2 == 0 {
+                    let textNode = node.childNode(withName: "\(x)", recursively: false)
+                    let vertex = SCNVector3(faceAnchor.geometry.vertices[x])
+                    textNode?.position = vertex
+                }
+            }
+        }
+    }
+}
 #Preview {
     ContentView()
 }
+
