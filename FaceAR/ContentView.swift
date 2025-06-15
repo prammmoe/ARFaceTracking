@@ -4,90 +4,127 @@
 //
 //  Created by Pramuditha Muhammad Ikhwan on 12/06/25.
 //
+
 import SwiftUI
+import RealityKit
 import ARKit
 
-struct ContentView : View {
+struct ContentView: View {
     var body: some View {
-        ARViewContainer().edgesIgnoringSafeArea(.all)
+        FacePaintingViewContainer().edgesIgnoringSafeArea(.all)
     }
 }
 
-struct ARViewContainer: UIViewRepresentable {
-    func makeUIView(context: Context) -> ARSCNView {
-        let sceneView = ARSCNView(frame: .zero)
-        
-        guard ARFaceTrackingConfiguration.isSupported else { fatalError() }
-        sceneView.delegate = context.coordinator
-        
-        let configuration = ARFaceTrackingConfiguration()
-        sceneView.session.run(configuration)
-        
-        return sceneView
-    }
-    
-    func updateUIView(_ uiView: ARSCNView, context: Context) {}
-    
+struct FacePaintingViewContainer: UIViewRepresentable {
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        return Coordinator()
     }
-    
-    class Coordinator: NSObject, ARSCNViewDelegate {
-        func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {
-            guard let device = renderer.device else {
-                return nil
-            }
-            guard let faceAnchor = anchor as? ARFaceAnchor else {
-                return nil
-            }
-            
-            let faceGeometry = ARSCNFaceGeometry(device: device)
-            let node = SCNNode(geometry: faceGeometry)
-            
 
-            node.geometry?.firstMaterial?.fillMode = .lines
-            
-            for x in 0..<faceAnchor.geometry.vertices.count {
-                if x % 2 == 0 {
-                    let text = SCNText(string: "\(x)", extrusionDepth: 1)
-                    let textNode = SCNNode(geometry: text)
-                    textNode.scale = SCNVector3(x: 0.00025, y: 0.00025, z: 0.00025)
-                    textNode.name = "\(x)"
+    func makeUIView(context: Context) -> ARView {
+        let arView = ARView(frame: .zero)
+
+        // Setup AR session config
+        let configuration = ARFaceTrackingConfiguration()
+        configuration.isLightEstimationEnabled = true
+        arView.session.delegate = context.coordinator
+        arView.session.run(configuration, options: [])
+
+        context.coordinator.arView = arView
+
+        return arView
+    }
+
+    func updateUIView(_ uiView: ARView, context: Context) {}
+
+    class Coordinator: NSObject, ARSessionDelegate {
+        weak var arView: ARView?
+        var faceAnchorEntity: AnchorEntity?
+
+        func session(_ session: ARSession, didAdd anchors: [ARAnchor]) {
+            for anchor in anchors {
+                guard let faceAnchor = anchor as? ARFaceAnchor else { continue }
+                
+                // Create anchor entity for this face
+                let anchorEntity = AnchorEntity(anchor: faceAnchor)
+                
+                // Create mesh from face geometry
+                let faceGeometry = faceAnchor.geometry
+                let vertices = faceGeometry.vertices.map {
+                    SIMD3<Float>($0.x, $0.y, $0.z)
+                }
+                let triangleIndices = Array(faceGeometry.triangleIndices).map { UInt32($0) }
+                
+                // Create mesh resource
+                var meshDescriptor = MeshDescriptor(name: "FaceMesh")
+                meshDescriptor.positions = MeshBuffers.Positions(vertices)
+                meshDescriptor.primitives = .triangles(triangleIndices)
+                
+                do {
+                    let meshResource = try MeshResource.generate(from: [meshDescriptor])
                     
-                    // Set the text color to red
-                    textNode.geometry?.firstMaterial?.diffuse.contents = UIColor.red
+                    // Create material with texture
+                    var material = UnlitMaterial()
+                    if let texture = try? TextureResource.load(named: "ButterflyWings") {
+                        material.color = .init(texture: .init(texture))
+                    } else {
+                        // Fallback if texture not found
+                        material.color = .init(tint: .white.withAlphaComponent(0.8))
+                    }
                     
-                    // Position the text node at the corresponding vertex
-                    let vertex = SCNVector3(faceAnchor.geometry.vertices[x])
-                    textNode.position = vertex
+                    // Create model entity
+                    let faceEntity = ModelEntity(mesh: meshResource, materials: [material])
+                    anchorEntity.addChild(faceEntity)
                     
-                    node.addChildNode(textNode)
+                    // Add to scene
+                    arView?.scene.anchors.append(anchorEntity)
+                    self.faceAnchorEntity = anchorEntity
+                    
+                } catch {
+                    print("Failed to create mesh resource: \(error)")
                 }
             }
-            
-            return node
+        }
+
+        func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+            for anchor in anchors {
+                guard let faceAnchor = anchor as? ARFaceAnchor,
+                      let anchorEntity = self.faceAnchorEntity,
+                      let faceEntity = anchorEntity.children.first as? ModelEntity else { continue }
+
+                // Update mesh with new face geometry
+                let faceGeometry = faceAnchor.geometry
+                let vertices = faceGeometry.vertices.map {
+                    SIMD3<Float>($0.x, $0.y, $0.z)
+                }
+                let triangleIndices = Array(faceGeometry.triangleIndices).map { UInt32($0) }
+                
+                var meshDescriptor = MeshDescriptor(name: "UpdatedFaceMesh")
+                meshDescriptor.positions = MeshBuffers.Positions(vertices)
+                meshDescriptor.primitives = .triangles(triangleIndices)
+                
+                do {
+                    let updatedMeshResource = try MeshResource.generate(from: [meshDescriptor])
+                    faceEntity.model?.mesh = updatedMeshResource
+                } catch {
+                    print("Failed to update mesh resource: \(error)")
+                }
+            }
         }
         
-        func renderer(_ renderer: SCNSceneRenderer, didUpdate node: SCNNode, for anchor: ARAnchor) {
-            guard let faceAnchor = anchor as? ARFaceAnchor,
-                  let faceGeometry = node.geometry as? ARSCNFaceGeometry
-            else {
-                return
-            }
-            
-            faceGeometry.update(from: faceAnchor.geometry)
-        
-            for x in 0..<faceAnchor.geometry.vertices.count {
-                if x % 2 == 0 {
-                    let textNode = node.childNode(withName: "\(x)", recursively: false)
-                    let vertex = SCNVector3(faceAnchor.geometry.vertices[x])
-                    textNode?.position = vertex
+        func session(_ session: ARSession, didRemove anchors: [ARAnchor]) {
+            for anchor in anchors {
+                guard anchor is ARFaceAnchor else { continue }
+                
+                // Remove the anchor entity when face is lost
+                if self.faceAnchorEntity != nil {
+                    arView?.scene.anchors.removeAll()
+                    self.faceAnchorEntity = nil
                 }
             }
         }
     }
 }
+
 #Preview {
     ContentView()
 }
-
