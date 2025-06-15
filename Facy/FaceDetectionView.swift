@@ -24,7 +24,7 @@ struct FaceDetectionView: View {
             // Circle Frame (diletakkan secara absolut di tengah layar)
             Circle()
                 .stroke(cameraManager.frameColor, lineWidth: 3)
-                .frame(width: 280, height: 280)
+                .frame(width: 340, height: 340)
             
             // UI Elements
             VStack {
@@ -45,7 +45,7 @@ struct FaceDetectionView: View {
                 Button(action: {
                     cameraManager.capturePhoto()
                 }) {
-                    Text("Ambil Foto")
+                    Text("Continue to drawing step")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 200, height: 50)
@@ -60,10 +60,10 @@ struct FaceDetectionView: View {
         .onAppear {
             cameraManager.requestPermission()
         }
-        .alert("Foto Berhasil", isPresented: $cameraManager.showSuccessAlert) {
+        .alert("Photo Captured", isPresented: $cameraManager.showSuccessAlert) {
             Button("OK") { }
         } message: {
-            Text("Wajah berhasil diambil dengan pencahayaan yang baik")
+            Text("Face captured successfully with good lighting")
         }
         .alert("Error", isPresented: $cameraManager.showErrorAlert) {
             Button("OK") { }
@@ -82,7 +82,7 @@ struct OverlayView: View {
                 Rectangle()
                     .overlay(
                         Circle()
-                            .frame(width: 280, height: 280)
+                            .frame(width: 340, height: 340)
                             .blendMode(.destinationOut)
                     )
             )

@@ -8,10 +8,9 @@
 import SwiftUI
 import AVFoundation
 import Vision
-
 // MARK: - Camera Manager
 class CameraManager: NSObject, ObservableObject {
-    @Published var warningMessage = "Posisikan wajah Anda di dalam frame"
+    @Published var warningMessage = "Position your face for face painting calibration"
     @Published var frameColor = Color.white
     @Published var canCapture = false
     @Published var showSuccessAlert = false
@@ -27,7 +26,7 @@ class CameraManager: NSObject, ObservableObject {
     private var isLightingSufficient = false
     private var isFaceInFrame = false
     private let lightingThreshold: Float = 0.3
-    private let circleFrameSize: CGFloat = 280
+    private let circleFrameSize: CGFloat = 340
     
     override init() {
         super.init()
@@ -41,7 +40,7 @@ class CameraManager: NSObject, ObservableObject {
                 if granted {
                     self?.startCamera()
                 } else {
-                    self?.showError("Akses kamera diperlukan untuk menggunakan fitur ini")
+                    self?.showError("Camera access is required to use this feature")
                 }
             }
         }
@@ -52,7 +51,7 @@ class CameraManager: NSObject, ObservableObject {
         captureSession.sessionPreset = .high
         
         guard let frontCamera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .front) else {
-            showError("Front camera tidak tersedia")
+            showError("Front camera is not available")
             return
         }
         
@@ -75,7 +74,7 @@ class CameraManager: NSObject, ObservableObject {
             }
             
         } catch {
-            showError("Gagal setup camera: \(error.localizedDescription)")
+            showError("Failed to set up camera: \(error.localizedDescription)")
         }
     }
     
@@ -185,7 +184,7 @@ class CameraManager: NSObject, ObservableObject {
         let averageBrightness = totalBrightness / Float(sampleCount)
         
         DispatchQueue.main.async { [weak self] in
-            self?.isLightingSufficient = averageBrightness > self?.lightingThreshold ?? 0.9
+            self?.isLightingSufficient = averageBrightness > self?.lightingThreshold ?? 0.3
             self?.updateCaptureButton()
         }
     }
@@ -195,16 +194,16 @@ class CameraManager: NSObject, ObservableObject {
         isFaceInFrame = inFrame
         
         if !faceDetected {
-            warningMessage = "Wajah tidak terdeteksi"
+            warningMessage = "Face not detected"
             frameColor = .red
         } else if !isLightingSufficient {
-            warningMessage = "Pencahayaan kurang. Pindah ke tempat yang lebih terang"
+            warningMessage = "Insufficient lighting for accurate face painting"
             frameColor = .yellow
         } else if !inFrame {
-            warningMessage = "Posisikan wajah Anda di dalam frame"
+            warningMessage = "Center your face for optimal calibration"
             frameColor = .yellow
         } else {
-            warningMessage = "Sempurna! Siap untuk mengambil foto"
+            warningMessage = "Perfect! Ready to start face painting"
             frameColor = .green
         }
         
